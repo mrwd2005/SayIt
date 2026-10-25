@@ -59,6 +59,16 @@ class PathsConfig:
 
 
 @dataclass(slots=True)
+class PartialCaptionConfig:
+    """Optional preview transcribes for desktop live captions."""
+
+    enabled: bool = True
+    min_audio_sec: float = 1.0
+    interval_sec: float = 1.5
+    max_audio_sec: float = 30.0
+
+
+@dataclass(slots=True)
 class ASRConfig:
     engine: str = "qwen3"
     model: str = "Qwen/Qwen3-ASR-1.7B"
@@ -70,6 +80,7 @@ class ASRConfig:
     max_concurrency: int = 1
     batch_max_size: int = 32
     batch_wait_ms: int = 60
+    partial: PartialCaptionConfig = field(default_factory=PartialCaptionConfig)
     firered_model_dir: str = str(_PROJECT_ROOT / "pretrained_models")
     firered_use_int8: bool = True
 
@@ -836,6 +847,20 @@ def load_config(config_path: str | None = None, env_path: str | None = None) -> 
             max_concurrency=int(asr_raw.get("max_concurrency") or defaults.asr.max_concurrency),
             batch_max_size=int(asr_raw.get("batch_max_size") or defaults.asr.batch_max_size),
             batch_wait_ms=int(asr_raw.get("batch_wait_ms") or defaults.asr.batch_wait_ms),
+            partial=PartialCaptionConfig(
+                enabled=bool(
+                    _pick(asr_raw, "partial", "enabled", default=defaults.asr.partial.enabled)
+                ),
+                min_audio_sec=float(
+                    _pick(asr_raw, "partial", "min_audio_sec", default=defaults.asr.partial.min_audio_sec)
+                ),
+                interval_sec=float(
+                    _pick(asr_raw, "partial", "interval_sec", default=defaults.asr.partial.interval_sec)
+                ),
+                max_audio_sec=float(
+                    _pick(asr_raw, "partial", "max_audio_sec", default=defaults.asr.partial.max_audio_sec)
+                ),
+            ),
             firered_model_dir=_resolve_path(
                 _pick(asr_raw, "firered", "model_dir"),
                 _PROJECT_ROOT / "pretrained_models",

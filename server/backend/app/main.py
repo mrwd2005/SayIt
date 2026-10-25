@@ -23,6 +23,7 @@ from .config import load_config
 from .db import Database
 from .guard import LLM_SKIPPED_QUOTA, Guard
 from .netutil import legacy_ip_key, request_ip_override, xff_of
+from .partial_caption import PartialCaptionSession
 from .diagnostics import create_upload_token, router as diagnostics_router
 from .llm import LLMEngine
 from .logging_setup import attach_database_log_handler, bind_log_context, configure_logging, reset_log_context
@@ -733,6 +734,7 @@ async def ws_transcribe(ws: WebSocket):
     client_meta: dict[str, str] = {}
     app_context: dict[str, str] = {}
     text_context: dict[str, str] | None = None
+    partial_caption: PartialCaptionSession | None = None
     web_demo_slot_acquired = False
     logger.info("ws connected")
 
@@ -742,12 +744,20 @@ async def ws_transcribe(ws: WebSocket):
             reset_log_context(session_tokens)
             session_tokens = {}
 
+    async def _close_partial_caption() -> None:
+        nonlocal partial_caption
+        current = partial_caption
+        partial_caption = None
+        if current is not None:
+            await current.close()
+
     async def _guard_reject(rejection) -> bool:
         """guard 拒绝本次会话：丢掉已收的音频，回 error + done。都发生在识别之前，所以不会进 ASR。
 
         返回 True 表示连接已按 4003 关闭，调用方要退出接收循环。
         """
         nonlocal active, pcm_total_bytes, session_id, web_demo_slot_acquired
+        await _close_partial_caption()
         active = False
         pcm_buffers.clear()
         pcm_total_bytes = 0
@@ -768,6 +778,7 @@ async def ws_transcribe(ws: WebSocket):
 
     async def _process_stop():
         nonlocal session_id, web_demo_slot_acquired, pcm_total_bytes, disable_ai
+        await _close_partial_caption()
         current_session_id = session_id
         ptt_hold_ms = last_usage_meta.get("ptt_hold_ms")
         all_pcm = b"".join(pcm_buffers)
@@ -1010,6 +1021,8 @@ async def ws_transcribe(ws: WebSocket):
                     else:
                         pcm_buffers.append(raw)
                         pcm_total_bytes += len(raw)
+                        if partial_caption is not None:
+                            partial_caption.push(raw)
                         # guard 推流检测：live 音频不能比实时快太多（只是一次比较，没开时直接返回）
                         rejection = gconn.check_pace(pcm_total_bytes)
                         if rejection is not None and await _guard_reject(rejection):
@@ -1041,6 +1054,7 @@ async def ws_transcribe(ws: WebSocket):
                         await ws.send_json({"type": "done"})
                         continue
                     web_demo_slot_acquired = True
+                await _close_partial_caption()
                 _clear_session_context()
                 pcm_buffers.clear()
                 pcm_total_bytes = 0
@@ -1059,6 +1073,21 @@ async def ws_transcribe(ws: WebSocket):
                 # Web demo never reads another application's editor, and must not accept a caller-
                 # supplied imitation of that privileged desktop context.
                 text_context = None if is_web_demo else _normalize_text_context(payload.get("text_context"))
+                if (
+                    not is_web_demo
+                    and asr_engine is not None
+                    and bool(payload.get("streamingDisplay"))
+                ):
+                    partial_caption = PartialCaptionSession(
+                        transcribe=asr_engine.transcribe,
+                        send_json=ws.send_json,
+                        enabled=cfg.asr.partial.enabled,
+                        min_audio_sec=cfg.asr.partial.min_audio_sec,
+                        interval_sec=cfg.asr.partial.interval_sec,
+                        max_audio_sec=cfg.asr.partial.max_audio_sec,
+                        context=ctx_override,
+                        language=lang_override,
+                    )
                 last_usage_meta = {"ptt_hold_ms": None}
                 last_audio_stats = {}
                 # guard：准入（格式）+ 音频额度都在 start 时判，而且放在建 telemetry 会话之前。被拒的
@@ -1133,6 +1162,7 @@ async def ws_transcribe(ws: WebSocket):
         except RuntimeError:
             pass
     finally:
+        await _close_partial_caption()
         _active_ws_ids.discard(cid)
         _active_ws_count = len(_active_ws_ids)
         conns = _ws_by_ip.get(ws_ip_key)

@@ -217,10 +217,15 @@ python -m pytest backend/tests/ -v
 {"cmd": "stop", "usage_meta": {"ptt_hold_ms": 1500}}
 
 // ← Server responds
+{"type": "partial", "text": "你好", "duration_sec": 1.2}
 {"type": "asr", "text": "你好世界", "asr_ms": 450}
 {"type": "final", "asr_text": "你好世界", "llm_text": "你好，世界。", "asr_ms": 450, "llm_ms": 320}
 {"type": "done"}
 ```
+
+`partial` messages are optional live-caption previews. They are only sent when
+the desktop client includes `"streamingDisplay": true` in `start`. The final
+transcript is always produced by the normal `stop` path.
 
 ### REST
 
