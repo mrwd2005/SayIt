@@ -36,6 +36,8 @@
   "settings.general.language.title": "界面语言",
   "settings.general.language.hint": "只改变界面文字，不影响语音识别的语种。",
   "settings.general.language.switchFailed": "切换语言失败，请重试。",
+  "settings.app.autoUpdate": "自动检查更新",
+  "settings.app.autoUpdateDesc": "关闭后不再检查或下载更新，并清除已下载的待安装包。",
   "duration.seconds": "{count} 秒",
   "duration.minutes": "{count} 分钟",
   "duration.minutesSeconds": "{minutes} 分 {seconds} 秒",

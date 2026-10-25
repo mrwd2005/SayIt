@@ -36,6 +36,8 @@
   "settings.general.language.title": "Interface language",
   "settings.general.language.hint": "Changes only the app interface. Recognition language is set separately.",
   "settings.general.language.switchFailed": "Could not switch language. Please try again.",
+  "settings.app.autoUpdate": "Automatically check for updates",
+  "settings.app.autoUpdateDesc": "When off, SayIt stops checking and downloading updates, and discards any downloaded installer.",
   "duration.seconds": "{count}s",
   "duration.minutes": "{count} min",
   "duration.minutesSeconds": "{minutes} min {seconds}s",

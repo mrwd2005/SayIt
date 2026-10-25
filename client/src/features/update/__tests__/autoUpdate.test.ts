@@ -4,6 +4,8 @@ const mocks = vi.hoisted(() => ({
   install: vi.fn(),
   recorder: vi.fn(),
   check: vi.fn(),
+  getSetting: vi.fn(),
+  setSetting: vi.fn(),
 }))
 const pending = { version: '0.2.2', filePath: 'C:/Temp/SayIt-0.2.2.exe', sha512: 'verified' }
 
@@ -11,8 +13,8 @@ vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn().mockResolvedValue(() =
 vi.mock('@/services/recorder', () => ({ getState: mocks.recorder }))
 vi.mock('@/services/debugLog', () => ({ addRuntimeEvent: vi.fn() }))
 vi.mock('@/services/store', () => ({
-  getSetting: vi.fn(async (key: string, fallback: unknown) => key === 'pendingUpdate' ? pending : fallback),
-  setSetting: vi.fn().mockResolvedValue(undefined),
+  getSetting: mocks.getSetting,
+  setSetting: mocks.setSetting,
 }))
 vi.mock('@/services/bridge', () => ({
   verifyUpdatePackage: vi.fn().mockResolvedValue(true),
@@ -34,6 +36,10 @@ beforeEach(() => {
   mocks.recorder.mockReset().mockReturnValue('idle')
   mocks.install.mockReset().mockResolvedValue(undefined)
   mocks.check.mockReset().mockResolvedValue({ hasUpdate: false, latestVersion: '0.2.1', downloadUrl: null })
+  mocks.getSetting.mockReset().mockImplementation(async (key: string, fallback: unknown) => (
+    key === 'pendingUpdate' ? pending : fallback
+  ))
+  mocks.setSetting.mockReset().mockResolvedValue(undefined)
 })
 afterEach(() => {
   vi.clearAllTimers()
@@ -84,5 +90,29 @@ describe('installing a pending update', () => {
     expect(mocks.check).toHaveBeenCalledTimes(1)
     await update.installPendingUpdate()
     expect(mocks.install).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('automatic update switch', () => {
+  it('stops checks and discards a downloaded package when disabled', async () => {
+    const update = await service()
+    expect(mocks.check).toHaveBeenCalledTimes(1)
+
+    await update.setAutoUpdateEnabled(false)
+    expect(mocks.setSetting).toHaveBeenCalledWith('autoCheckUpdate', false)
+    expect(update.getAutoUpdateState().pending).toBeNull()
+
+    await vi.advanceTimersByTimeAsync(6 * 60 * 60 * 1000)
+    expect(mocks.check).toHaveBeenCalledTimes(1)
+    await update.installPendingUpdate()
+    expect(mocks.install).not.toHaveBeenCalled()
+  })
+
+  it('checks immediately when enabled again', async () => {
+    const update = await service()
+    await update.setAutoUpdateEnabled(false)
+    await update.setAutoUpdateEnabled(true)
+    expect(mocks.setSetting).toHaveBeenLastCalledWith('autoCheckUpdate', true)
+    expect(mocks.check).toHaveBeenCalledTimes(2)
   })
 })

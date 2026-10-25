@@ -86,6 +86,8 @@ const listeners: Set<(state: AutoUpdateState) => void> = new Set()
 /** 正在进行中的检查/下载，防止启动自动检查与用户手动点击撞在一起重复下载 */
 let inFlight: Promise<void> | null = null
 let checkTimer: ReturnType<typeof setInterval> | null = null
+/** 运行时镜像；关闭开关后，已经开始的检查也不能继续保存待安装包。 */
+let autoUpdateEnabled = true
 
 // 订阅 Rust 端下载真实进度事件，驱动进度显示
 void listen<{ downloadedBytes: number; totalBytes: number; percent: number; status: string; error: string | null }>(
@@ -184,6 +186,7 @@ async function ensureDownloaded(info: VersionInfo): Promise<void> {
   setState({ phase: 'downloading', error: null, downloadPercent: 0 })
   try {
     const filePath = await bridge.downloadUpdate(info.downloadUrl, info.sha512)
+    if (!autoUpdateEnabled) return
     await savePending({ version, filePath, sha512: info.sha512 })
     addRuntimeEvent('info', 'update', `version ${version} downloaded and ready to install`)
   } catch (err) {
@@ -195,6 +198,7 @@ async function ensureDownloaded(info: VersionInfo): Promise<void> {
 
 /** 检查一次，发现新版本就在后台下载。所有触发路径最终都走这里。 */
 async function runCheckAndDownload(): Promise<void> {
+  if (!autoUpdateEnabled) return
   if (currentState.phase === 'installing') return
   if (inFlight) { await inFlight; return }
 
@@ -209,6 +213,7 @@ async function runCheckAndDownload(): Promise<void> {
   const task = (async () => {
     setState({ phase: 'checking', error: null })
     const info = await checkVersionUpdate(current)
+    if (!autoUpdateEnabled) return
     setState({ versionInfo: info, checkedAt: Date.now() })
 
     // 无条件记一条：这是判断"更新到底跑没跑、看到了什么"的唯一依据。
@@ -275,11 +280,11 @@ export async function startUpdateService(): Promise<void> {
       })
     }
 
-    // 这个开关的 UI 已经撤掉（更新不再让用户关），但**保留读取**：
-    // 更新链路自己出故障时（0.0.8 那次把用户锁在死循环里），这是唯一不用发新版
-    // 就能远程指导用户止血的通道。默认 true，绝大多数用户根本不知道它存在。
-    const enabled = await getSetting('autoCheckUpdate', true).catch(() => true)
+    const enabled = await getAutoUpdateEnabled()
+    autoUpdateEnabled = enabled
     if (!enabled) {
+      stopUpdateTimer()
+      await clearPending()
       addRuntimeEvent('warn', 'update', 'update checks disabled by the autoCheckUpdate setting')
       return
     }
@@ -302,11 +307,40 @@ export async function startUpdateService(): Promise<void> {
   }
 }
 
+function stopUpdateTimer(): void {
+  if (checkTimer !== null) {
+    clearInterval(checkTimer)
+    checkTimer = null
+  }
+}
+
+export async function getAutoUpdateEnabled(): Promise<boolean> {
+  return getSetting('autoCheckUpdate', true).catch(() => true)
+}
+
+/**
+ * 保存界面开关并立即作用于当前会话。关闭后取消周期检查、清掉待安装包，并让
+ * 已经开始但尚未结束的检查停止保存下载结果。
+ */
+export async function setAutoUpdateEnabled(enabled: boolean): Promise<void> {
+  await setSetting('autoCheckUpdate', enabled)
+  autoUpdateEnabled = enabled
+  if (!enabled) {
+    stopUpdateTimer()
+    await clearPending()
+    setState({ phase: 'idle', versionInfo: null, checkedAt: null, error: null })
+    addRuntimeEvent('info', 'update', 'automatic update checks disabled by user')
+    return
+  }
+  await startUpdateService()
+}
+
 /**
  * 手动检查（关于页「检查更新」按钮）。
  * 发现新版本同样会在后台开始下载 —— 与自动路径同一套行为，不再是"检查完直接装掉"。
  */
 export async function checkForUpdateNow(): Promise<VersionInfo | null> {
+  if (!autoUpdateEnabled) return null
   await runCheckAndDownload()
   return currentState.versionInfo ?? null
 }
@@ -316,6 +350,7 @@ export async function checkForUpdateNow(): Promise<VersionInfo | null> {
  * 调用方通过卡片或关于页的安装按钮说明重启行为；录音和转写期间禁止安装。
  */
 export async function installPendingUpdate(): Promise<void> {
+  if (!autoUpdateEnabled) return
   const pending = currentState.pending
   if (!pending || currentState.phase === 'installing') return
   if (getRecorderState() !== 'idle') {
