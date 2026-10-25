@@ -47,6 +47,9 @@ export class ServerProvider implements TranscriptionProvider {
   /** 松键时随 stop 传入的本次策略；与线上那个 disable_ai 布尔同出一源。 */
   private activePolicy: AiPolicy | undefined
   private activeConnectionId: string | undefined
+  /** 本次录音是否把服务端流式中间结果送去上屏，与云端模式使用同一个开关。 */
+  private streamingDisplay = false
+  private partialCount = 0
   private pendingAudio: ArrayBuffer[] = []
   private pendingAudioBytes = 0
 
@@ -94,6 +97,17 @@ export class ServerProvider implements TranscriptionProvider {
           // 自定义 AI 在本机执行；服务端 llm=false 不应把整条模式标成不可用。
           llm: this.aiSource === 'custom' ? this.customAiReady : data.llm,
         })
+      },
+      onPartial: (text) => {
+        if (this.activeRunId === 0 || !this.streamingDisplay || !text) return
+        this.partialCount++
+        if (this.partialCount === 1) {
+          addRuntimeEvent('info', 'server', 'First streaming partial received', {
+            runId: this.activeRunId,
+            textLen: text.length,
+          })
+        }
+        callbacks.onPartialASR?.(text)
       },
       onASR: (result) => {
         if (this.activeRunId === 0) return
@@ -174,6 +188,8 @@ export class ServerProvider implements TranscriptionProvider {
     }
     this.customFinalPending = false
     this.serverDonePending = false
+    this.streamingDisplay = Boolean(opts.streamingDisplay)
+    this.partialCount = 0
     this.dropPendingAudio()
 
     const wireOptions = this.aiSource === 'custom'
@@ -314,5 +330,7 @@ export class ServerProvider implements TranscriptionProvider {
     this.activePolicy = undefined
     this.customFinalPending = false
     this.serverDonePending = false
+    this.streamingDisplay = false
+    this.partialCount = 0
   }
 }

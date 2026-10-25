@@ -308,7 +308,7 @@
   "appearance.showDurationDesc": "Turn this off to show only the waveform",
   "appearance.streaming": "Live captions",
   "appearance.streamingDesc": "Shows the transcript on the overlay while you speak",
-  "appearance.streamingShortNote": ". Works with Doubao and Qwen realtime ASR; for Doubao, ",
+  "appearance.streamingShortNote": ". Works with Doubao and Qwen realtime ASR, and self-hosted servers that emit partial transcripts; for Doubao, ",
   "appearance.streamingSetupNote": "Doubao needs Streaming ASR 2.0 enabled; Qwen needs a workspace ID.",
   "appearance.streamingActivate": "enable it",
   "appearance.streamingHelp": "On: shows text as you speak, but accuracy and hotword matching may be lower.\nOff: waits until you finish, with better accuracy and hotword matching.\nLeave this off if proper nouns matter.",

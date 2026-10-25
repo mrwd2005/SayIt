@@ -51,6 +51,8 @@ export interface AudioStats {
 export interface WSCallbacks {
   onStateChange?: (state: WSState) => void
   onReady?: (data: { connectionId: string; asr: boolean; llm: boolean }) => void
+  /** 服务端流式识别的中间结果；text 是截至目前为止的累计全文。 */
+  onPartial?: (text: string) => void
   onASR?: (result: ASRResult) => void
   onFinal?: (result: FinalResult) => void
   onDone?: () => void
@@ -241,6 +243,11 @@ export function connect(cbs: WSCallbacks): Promise<void> {
       if (typeof e.data !== 'string') return
       try {
         const msg = JSON.parse(e.data)
+        if (msg.type === 'partial') {
+          // 中间结果通常每秒两条；不逐条写入会话日志，避免冲掉后续排查所需的消息。
+          callbacks.onPartial?.(String(msg.text ?? ''))
+          return
+        }
         addMsg('received', msg.type || 'unknown', msg)
 
         switch (msg.type) {

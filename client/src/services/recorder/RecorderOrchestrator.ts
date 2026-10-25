@@ -648,7 +648,8 @@ export class RecorderOrchestrator {
 
   /** 录音开始时实时判定是否激活流式字幕气泡（读最新的开关/供应商/WorkspaceId，避免缓存过期）。
    *  判据统一交给 isStreamingDisplayReady：doubao_v2 与 qwen_audio_stream 直接可用，
-   *  qwen_realtime 还要配 WorkspaceId；qwen3-asr-flash 等非流式模型不激活。 */
+   *  qwen_realtime 还要配 WorkspaceId；qwen3-asr-flash 等非流式模型不激活。
+   *  服务器模式由服务端决定是否发送 partial；开关打开时先显示字幕气泡占位。 */
   private async applyStreamingActive(): Promise<void> {
     try {
       const [streamOn, provider, workspaceId] = await Promise.all([
@@ -657,9 +658,11 @@ export class RecorderOrchestrator {
         getSetting('cloudAsr.qwen.workspaceId', ''),
       ])
       if (this.state !== 'recording') return
-      const active = Boolean(streamOn)
-        && this.provider.mode === 'cloud_api'
-        && isStreamingDisplayReady(String(provider || ''), String(workspaceId || ''))
+      const active = Boolean(streamOn) && (
+        this.provider.mode === 'server'
+        || (this.provider.mode === 'cloud_api'
+          && isStreamingDisplayReady(String(provider || ''), String(workspaceId || '')))
+      )
       this.overlayService.setStreamingActive(active)
     } catch {
       /* ignore — 气泡占位是锦上添花，读取失败不影响录音 */

@@ -308,7 +308,7 @@
   "appearance.showDurationDesc": "关闭后仅显示波形",
   "appearance.streaming": "流式实时字幕",
   "appearance.streamingDesc": "说话时在悬浮窗上实时显示识别文字",
-  "appearance.streamingShortNote": "。仅支持豆包和千问实时识别，豆包需",
+  "appearance.streamingShortNote": "。支持豆包和千问实时识别，以及会推送 partial 中间结果的自建服务器；豆包需",
   "appearance.streamingSetupNote": "豆包需要先开通「流式语音识别 2.0」；千问需要填写业务空间 ID。",
   "appearance.streamingActivate": "前往开通",
   "appearance.streamingHelp": "开启后走「双向流式」实时通路：边说边出字、更快，但整体准确率略低、热词效果明显减弱。\n关闭则用更准的通路（准确率更高、热词更准），只是没有边说边出字的效果。\n如果你很看重专有名词 / 热词的识别准确率，建议关闭。",
